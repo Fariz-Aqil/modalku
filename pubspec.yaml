@@ -28,5 +28,5 @@ flutter:
 # Ikon aplikasi: jalankan `dart run flutter_launcher_icons`
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/logo.png"
