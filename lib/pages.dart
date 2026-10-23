@@ -209,6 +209,7 @@ class _SetupPageState extends State<SetupPage> {
   int get modal => parseMoney(modalC.text);
   int get price => parseMoney(priceC.text);
   bool get draftReady => nameC.text.trim().isNotEmpty && price > 0;
+  bool get canSave => items.isNotEmpty || draftReady;
 
   @override
   void dispose() {
@@ -240,7 +241,6 @@ class _SetupPageState extends State<SetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canSave = items.isNotEmpty || draftReady;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: C.yellow,
