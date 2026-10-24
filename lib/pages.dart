@@ -50,6 +50,69 @@ class HomePage extends StatelessWidget {
     if (ok == true) await state.startNew();
   }
 
+  /// Perkiraan unit lagi untuk balik modal, memakai harga rata-rata produk.
+  String _remainingText(AppState s) {
+    switch (s.standing) {
+      case Standing.balikModal:
+        return 'Balik modal tercapai!';
+      case Standing.profit:
+        return 'Sudah profit, pertahankan!';
+      case Standing.rugi:
+        final remaining = s.modal - s.revenue;
+        final avg = s.products.fold<int>(0, (a, b) => a + b.price) / s.products.length;
+        final n = (remaining / avg).ceil();
+        return n <= 1 ? 'Tinggal 1 unit lagi balik modal!' : 'Sekitar $n unit lagi untuk balik modal';
+    }
+  }
+
+  Widget _mini(IconData icon, String label, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 62,
+          height: 52,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: C.ink, size: 24),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: C.ink)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _todayButton(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return Material(
+      color: C.ink,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SalesPage(state: state, date: today)),
+        ),
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.edit_note_rounded, color: C.yellow, size: 24),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text('Catat hari ini',
+                    overflow: TextOverflow.ellipsis, style: display(15, color: C.yellow)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _barButton(IconData icon, String label, VoidCallback onTap) => TextButton.icon(
         onPressed: onTap,
         icon: Icon(icon, color: C.ink),
@@ -80,7 +143,9 @@ class HomePage extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               TargetBar(revenue: state.revenue, modal: state.modal),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
+                              Text(_remainingText(state), style: display(17)),
+                              const SizedBox(height: 2),
                               Text('Pendapatan ${rp(state.revenue)} dari modal ${rp(state.modal)}',
                                   style: const TextStyle(fontWeight: FontWeight.w600)),
                             ],
@@ -107,6 +172,8 @@ class HomePage extends StatelessWidget {
                             child: Text('Ketuk tanggal untuk mencatat penjualan',
                                 style: TextStyle(color: C.mute, fontStyle: FontStyle.italic)),
                           ),
+                          const SizedBox(height: 22),
+                          WeekChart(state: state),
                         ],
                       )
                     : Stack(
@@ -155,28 +222,38 @@ class HomePage extends StatelessWidget {
                 color: C.yellow,
                 child: SafeArea(
                   top: false,
-                  child: (ready || state.history.isNotEmpty)
-                      ? Row(
-                          children: [
-                            if (ready)
-                              Expanded(
-                                child: _barButton(Icons.description_outlined, 'Laporan',
-                                    () => Navigator.push(context,
-                                        MaterialPageRoute(builder: (_) => ReportPage(state: state)))),
-                              ),
-                            Expanded(
-                              child: _barButton(Icons.history_rounded, 'Riwayat',
+                  child: ready
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                          child: Row(
+                            children: [
+                              _mini(Icons.description_outlined, 'Laporan',
+                                  () => Navigator.push(context,
+                                      MaterialPageRoute(builder: (_) => ReportPage(state: state)))),
+                              _mini(Icons.history_rounded, 'Riwayat',
                                   () => Navigator.push(context,
                                       MaterialPageRoute(builder: (_) => HistoryPage(state: state)))),
-                            ),
-                            if (ready)
                               Expanded(
-                                child: _barButton(Icons.restart_alt_rounded, 'Baru',
-                                    () => _confirmReset(context)),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  child: _todayButton(context),
+                                ),
                               ),
-                          ],
+                              _mini(Icons.restart_alt_rounded, 'Baru', () => _confirmReset(context)),
+                            ],
+                          ),
                         )
-                      : const SizedBox(height: 28),
+                      : (state.history.isNotEmpty
+                          ? Row(
+                              children: [
+                                Expanded(
+                                  child: _barButton(Icons.history_rounded, 'Riwayat',
+                                      () => Navigator.push(context,
+                                          MaterialPageRoute(builder: (_) => HistoryPage(state: state)))),
+                                ),
+                              ],
+                            )
+                          : const SizedBox(height: 28)),
                 ),
               ),
             ],
@@ -572,6 +649,22 @@ class ReportPage extends StatelessWidget {
   final NoteData state;
   const ReportPage({super.key, required this.state});
 
+  Future<void> _export(BuildContext context, {required bool share}) async {
+    try {
+      final bytes = await buildReportPdf(state);
+      if (share) {
+        await Printing.sharePdf(bytes: bytes, filename: 'Laporan-ModalKu.pdf');
+      } else {
+        await Printing.layoutPdf(name: 'Laporan-ModalKu.pdf', onLayout: (_) async => bytes);
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal membuat PDF: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final keys = state.dayKeys;
@@ -629,13 +722,16 @@ class ReportPage extends StatelessWidget {
                     rp(state.dayRevenue(keys[i]))),
             const SizedBox(height: 28),
             ChunkButton(
-              label: 'Cetak PDF',
+              label: 'Simpan / Bagikan PDF',
               icon: Icons.picture_as_pdf_rounded,
               dark: true,
-              onTap: () => Printing.layoutPdf(
-                name: 'Laporan-ModalKu.pdf',
-                onLayout: (_) => buildReportPdf(state),
-              ),
+              onTap: () => _export(context, share: true),
+            ),
+            const SizedBox(height: 10),
+            ChunkButton(
+              label: 'Cetak',
+              icon: Icons.print_rounded,
+              onTap: () => _export(context, share: false),
             ),
           ],
         ),
