@@ -320,3 +320,120 @@ class _CalendarViewState extends State<CalendarView> {
     );
   }
 }
+
+
+// ---------- grafik 7 hari terakhir ----------
+
+String compactRp(int v) {
+  if (v >= 1000000) {
+    final m = v / 1000000;
+    return '${m.toStringAsFixed(m >= 10 || m == m.roundToDouble() ? 0 : 1)}jt';
+  }
+  if (v >= 1000) return '${(v / 1000).round()}rb';
+  return '$v';
+}
+
+/// Batang pendapatan 7 hari terakhir. Warna batang mengikuti status hari itu.
+class WeekChart extends StatelessWidget {
+  final AppState state;
+  const WeekChart({super.key, required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = [for (var i = 6; i >= 0; i--) DateTime(today.year, today.month, today.day - i)];
+    final standings = state.dayStandings;
+    final values = [for (final d in days) state.dayRevenue(dateKey(d))];
+    final maxV = values.fold<int>(0, (a, b) => a > b ? a : b);
+    const maxBar = 84.0;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: C.ink.withOpacity(0.15), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('7 hari terakhir', style: display(18)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 150,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < days.length; i++)
+                  Expanded(
+                    child: _bar(
+                      day: days[i],
+                      value: values[i],
+                      height: maxV == 0 ? 4 : (values[i] == 0 ? 4 : 8 + (maxBar - 8) * values[i] / maxV),
+                      st: standings[dateKey(days[i])],
+                      isToday: days[i] == today,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (maxV == 0)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Belum ada penjualan dalam 7 hari ini.',
+                  style: TextStyle(color: C.mute, fontStyle: FontStyle.italic, fontSize: 13)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bar({
+    required DateTime day,
+    required int value,
+    required double height,
+    required Standing? st,
+    required bool isToday,
+  }) {
+    final color = switch (st) {
+      Standing.rugi => C.red,
+      Standing.balikModal => C.yellow,
+      Standing.profit => C.green,
+      null => C.ink.withOpacity(0.12),
+    };
+    const names = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(value == 0 ? '' : compactRp(value),
+              maxLines: 1, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+            height: height,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+              border: st == null ? null : Border.all(color: C.ink, width: 1.5),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(names[day.weekday - 1],
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
+                  color: isToday ? C.ink : C.mute)),
+          Text('${day.day}',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
+                  color: isToday ? C.ink : C.mute)),
+        ],
+      ),
+    );
+  }
+}
