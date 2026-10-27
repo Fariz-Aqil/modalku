@@ -65,6 +65,89 @@ String signedRp(int v) => v > 0 ? '+${rp(v)}' : rp(v);
 
 enum Standing { rugi, balikModal, profit }
 
+String standingLabel(Standing s) => switch (s) {
+      Standing.rugi => 'Rugi',
+      Standing.balikModal => 'Balik modal',
+      Standing.profit => 'Profit',
+    };
+
+/// Cara mengelompokkan rincian laporan.
+enum ReportView { harian, mingguan, bulanan }
+
+String viewName(ReportView v) => switch (v) {
+      ReportView.harian => 'Harian',
+      ReportView.mingguan => 'Mingguan',
+      ReportView.bulanan => 'Bulanan',
+    };
+
+class PeriodRow {
+  final String label;
+  final int units;
+  final int revenue;
+  final Standing standing;
+  const PeriodRow(this.label, this.units, this.revenue, this.standing);
+}
+
+/// Rincian per hari / minggu (Senin-Minggu) / bulan.
+/// Status tiap baris dihitung dari pendapatan kumulatif sampai akhir periode itu.
+List<PeriodRow> buildPeriods(NoteData n, ReportView v) {
+  final keys = n.dayKeys;
+  if (keys.isEmpty) return [];
+
+  DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day - (d.weekday - 1));
+
+  String groupKey(DateTime d) {
+    if (v == ReportView.harian) return dateKey(d);
+    if (v == ReportView.mingguan) return dateKey(weekStart(d));
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}';
+  }
+
+  final groups = <String, List<String>>{};
+  for (final k in keys) {
+    groups.putIfAbsent(groupKey(parseKey(k)), () => []).add(k);
+  }
+
+  final firstDay = parseKey(keys.first);
+  final firstWeek = weekStart(firstDay);
+  final rows = <PeriodRow>[];
+  var cum = 0;
+  var reached = false;
+
+  for (final e in groups.entries) {
+    var rev = 0;
+    var units = 0;
+    for (final k in e.value) {
+      rev += n.dayRevenue(k);
+      units += n.dayUnits(k);
+    }
+    cum += rev;
+
+    Standing st;
+    if (n.modal > 0 && cum >= n.modal) {
+      st = reached ? Standing.profit : Standing.balikModal;
+      reached = true;
+    } else {
+      st = Standing.rugi;
+    }
+
+    String label;
+    if (v == ReportView.harian) {
+      final d = parseKey(e.key);
+      label = 'Hari ke-${d.difference(firstDay).inDays + 1}  -  ${fmtDate(d)}';
+    } else if (v == ReportView.mingguan) {
+      final start = parseKey(e.key);
+      final end = DateTime(start.year, start.month, start.day + 6);
+      final no = start.difference(firstWeek).inDays ~/ 7 + 1;
+      label = 'Minggu ke-$no  (${start.day} ${shortMonth(start.month)} - ${end.day} ${shortMonth(end.month)})';
+    } else {
+      final p = e.key.split('-');
+      label = '${monthName(int.parse(p[1]))} ${p[0]}';
+    }
+    rows.add(PeriodRow(label, units, rev, st));
+  }
+  return rows;
+}
+
 /// Satu catatan lengkap (modal, produk, penjualan) beserta hitungannya.
 class NoteData {
   int modal;
