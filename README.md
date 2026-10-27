@@ -1,8 +1,6 @@
 # ModalKu - kasir digital (Flutter)
 
-<p align="center">
-  <img src="<img width="480" height="1024" alt="logo (1)" src="https://github.com/user-attachments/assets/a282ddfe-ab45-451f-95e9-f3016257ae75" />
-</p>
+<img width="1024" height="1024" alt="logo (1)" src="https://github.com/user-attachments/assets/f39b2c08-d0cb-4c5e-88a7-c4a5573e40a6" />
 
 ## Menjalankan
 1. Buat folder platform (sekali saja), di dalam folder ini:
