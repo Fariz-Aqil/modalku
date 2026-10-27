@@ -4,7 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'app_state.dart';
 
-Future<Uint8List> buildReportPdf(NoteData s) async {
+Future<Uint8List> buildReportPdf(NoteData s, ReportView view) async {
   final doc = pw.Document();
   final logo = pw.MemoryImage((await rootBundle.load('assets/logo.png')).buffer.asUint8List());
 
@@ -60,7 +60,7 @@ Future<Uint8List> buildReportPdf(NoteData s) async {
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Laporan Penjualan',
+                pw.Text('Laporan Penjualan ${viewName(view)}',
                     style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
                 pw.Text('Periode: $period', style: const pw.TextStyle(fontSize: 12)),
               ],
@@ -103,27 +103,23 @@ Future<Uint8List> buildReportPdf(NoteData s) async {
           },
         ),
         pw.SizedBox(height: 20),
-        pw.Text('Per hari', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
+        pw.Text('Rincian ${viewName(view).toLowerCase()}',
+            style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 6),
         pw.TableHelper.fromTextArray(
-          headers: ['Hari', 'Tanggal', 'Unit', 'Pendapatan'],
+          headers: ['Periode', 'Unit', 'Pendapatan', 'Status'],
           data: [
-            for (final k in keys)
-              [
-                'Ke-${parseKey(k).difference(parseKey(keys.first)).inDays + 1}',
-                fmtLong(parseKey(k)),
-                '${s.dayUnits(k)}',
-                rp(s.dayRevenue(k)),
-              ],
+            for (final row in buildPeriods(s, view))
+              [row.label, '${row.units}', rp(row.revenue), standingLabel(row.standing)],
           ],
           headerStyle: headerStyle,
           headerDecoration: const pw.BoxDecoration(color: yellow),
           cellStyle: const pw.TextStyle(fontSize: 11),
           cellAlignments: {
             0: pw.Alignment.centerLeft,
-            1: pw.Alignment.centerLeft,
+            1: pw.Alignment.centerRight,
             2: pw.Alignment.centerRight,
-            3: pw.Alignment.centerRight,
+            3: pw.Alignment.centerLeft,
           },
         ),
         pw.SizedBox(height: 24),
