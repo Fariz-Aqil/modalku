@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'app_state.dart';
 import 'report_pdf.dart';
@@ -516,11 +517,30 @@ class _SalesPageState extends State<SalesPage> {
     return widget.date.difference(start).inDays + 1;
   }
 
+  final Map<String, TextEditingController> _ctrls = {};
+
+  TextEditingController _ctrl(String id) =>
+      _ctrls.putIfAbsent(id, () => TextEditingController(text: '${qty[id] ?? 0}'));
+
+  @override
+  void dispose() {
+    for (final c in _ctrls.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
   void _change(String id, int by) {
     setState(() {
       final v = ((qty[id] ?? 0) + by).clamp(0, 99999);
       qty[id] = v;
+      _ctrl(id).text = '$v';
     });
+  }
+
+  /// Jumlah yang diketik langsung.
+  void _typed(String id, String text) {
+    setState(() => qty[id] = int.tryParse(text) ?? 0);
   }
 
   Future<void> _done() async {
@@ -547,6 +567,7 @@ class _SalesPageState extends State<SalesPage> {
           ),
           Expanded(
             child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               children: [
                 for (final p in widget.state.products) _tile(p),
@@ -607,8 +628,30 @@ class _SalesPageState extends State<SalesPage> {
           ),
           _roundBtn(Icons.remove_rounded, q > 0 ? () => _change(p.id, -1) : null, 'Kurangi ${p.name}'),
           SizedBox(
-            width: 52,
-            child: Center(child: Text('$q', style: display(26))),
+            width: 68,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: TextField(
+                controller: _ctrl(p.id),
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: display(24),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                onChanged: (t) => _typed(p.id, t),
+                onTap: () {
+                  final c = _ctrl(p.id);
+                  c.selection = TextSelection(baseOffset: 0, extentOffset: c.text.length);
+                },
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '0',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+                ),
+              ),
+            ),
           ),
           _roundBtn(Icons.add_rounded, () => _change(p.id, 1), 'Tambah ${p.name}'),
         ],
@@ -645,17 +688,28 @@ class _SalesPageState extends State<SalesPage> {
 // LAPORAN
 // =====================================================================
 
-class ReportPage extends StatelessWidget {
+class ReportPage extends StatefulWidget {
   final NoteData state;
   const ReportPage({super.key, required this.state});
 
+  @override
+  State<ReportPage> createState() => _ReportPageState();
+}
+
+class _ReportPageState extends State<ReportPage> {
+  ReportView view = ReportView.harian;
+
+  NoteData get state => widget.state;
+
+  /// PDF mengikuti tampilan yang sedang dipilih (harian / mingguan / bulanan).
   Future<void> _export(BuildContext context, {required bool share}) async {
     try {
-      final bytes = await buildReportPdf(state);
+      final bytes = await buildReportPdf(state, view);
       if (share) {
-        await Printing.sharePdf(bytes: bytes, filename: 'Laporan-ModalKu.pdf');
+        await Printing.sharePdf(bytes: bytes, filename: 'Laporan-ModalKu-${viewName(view)}.pdf');
       } else {
-        await Printing.layoutPdf(name: 'Laporan-ModalKu.pdf', onLayout: (_) async => bytes);
+        await Printing.layoutPdf(
+            name: 'Laporan-ModalKu-${viewName(view)}.pdf', onLayout: (_) async => bytes);
       }
     } catch (e) {
       if (!context.mounted) return;
@@ -665,10 +719,72 @@ class ReportPage extends StatelessWidget {
     }
   }
 
+  Widget _chip(ReportView v) {
+    final on = view == v;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Material(
+          color: on ? C.yellow : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => view = v),
+            child: Container(
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: on ? C.ink : C.ink.withOpacity(0.2), width: on ? 2 : 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(viewName(v), style: display(15)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _periodRow(PeriodRow r) {
+    final dot = switch (r.standing) {
+      Standing.rugi => C.red,
+      Standing.balikModal => C.yellow,
+      Standing.profit => C.green,
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: dot,
+              shape: BoxShape.circle,
+              border: Border.all(color: C.ink, width: 1.5),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text('${r.units} unit  |  ${standingLabel(r.standing)}',
+                    style: const TextStyle(fontSize: 12, color: C.mute)),
+              ],
+            ),
+          ),
+          Text(rp(r.revenue), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final keys = state.dayKeys;
     final period = periodText(state);
+    final rows = buildPeriods(state, view);
 
     Widget row(String l, String r, {Color? color, bool bold = false}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -712,20 +828,25 @@ class ReportPage extends StatelessWidget {
               row('${p.name}  (${state.productUnits(p.id)} x ${rp(p.price)})',
                   rp(state.productUnits(p.id) * p.price)),
             const SizedBox(height: 22),
-            Text('Per hari', style: display(20)),
-            const SizedBox(height: 6),
-            if (keys.isEmpty)
+            Text('Rincian', style: display(20)),
+            const SizedBox(height: 10),
+            Row(children: [for (final v in ReportView.values) _chip(v)]),
+            const SizedBox(height: 10),
+            if (rows.isEmpty)
               const Text('Belum ada data.', style: TextStyle(color: C.mute))
             else
-              for (var i = 0; i < keys.length; i++)
-                row('Hari ke-${parseKey(keys[i]).difference(parseKey(keys.first)).inDays + 1}  -  ${fmtDate(parseKey(keys[i]))}',
-                    rp(state.dayRevenue(keys[i]))),
+              for (final r in rows) _periodRow(r),
             const SizedBox(height: 28),
             ChunkButton(
               label: 'Simpan / Bagikan PDF',
               icon: Icons.picture_as_pdf_rounded,
               dark: true,
               onTap: () => _export(context, share: true),
+            ),
+            const SizedBox(height: 6),
+            Center(
+              child: Text('PDF mengikuti tampilan ${viewName(view).toLowerCase()}',
+                  style: const TextStyle(color: C.mute, fontSize: 12)),
             ),
             const SizedBox(height: 10),
             ChunkButton(
