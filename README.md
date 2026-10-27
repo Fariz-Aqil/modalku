@@ -1,5 +1,7 @@
 # ModalKu - kasir digital (Flutter)
 
+<img width="1024" height="1024" alt="logo (1)" src="https://github.com/user-attachments/assets/8e342035-20e1-4f98-af1a-e68b15ecdb40" />
+
 ## Menjalankan
 1. Buat folder platform (sekali saja), di dalam folder ini:
    `flutter create . --project-name modalku --org com.modalku`
